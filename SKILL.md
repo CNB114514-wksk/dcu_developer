@@ -1,9 +1,12 @@
 ---
 name: dcu-developer-skills
-description: 海光 DCU / ComfyUI / SCNet 平台开发技能合集（共 106 个 skill）的总索引。当任务涉及 DCU 适配与量化推理、ComfyUI 运维与工作流、容器镜像与持久区、平台代理与网关、Skill 编写等场景时使用；本文件给出各领域子技能的位置与选用指引。
+description: 海光 DCU / ComfyUI / SCNet 平台开发技能合集（共 106 个 skill）的总索引。当任务涉及 DCU
+  适配与量化推理、ComfyUI 运维与工作流、容器镜像与持久区、平台代理与网关、Skill 编写等场景时使用；本文件给出各领域子技能的位置与选用指引。
+tasks: ""
 ---
-
 # DCU 开发技能合集（106 个）
+
+介绍：本skill为开发镜像时hermes自动产生的skill，包含了在平台里开发镜像时踩到的所有坑，可以帮agent一条龙配置好平台镜像所有基础环境
 
 本仓库收集 DCU / ComfyUI 开发过程中沉淀下来的 skill。**每个子目录是一个独立 skill**，目录内的 `SKILL.md` 定义其适用场景与工作流，可选的 `scripts/`、`references/`、`templates/` 存放配套脚本与资料。本文件是总索引。
 
