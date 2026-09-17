@@ -24,7 +24,7 @@ description: SCNet 容器通用环境装配/排障：node/npm、hermes dashboard
   **两条硬规矩**：① 调用方**禁用** `[ -z "$https_proxy" ]` 式守卫——预置 env 非空会把 override 挡在外面，必须无条件 `source`（dshweb/hermesweb 260916 已改）；② 凭据轮换只改 override 一个文件，不动 `ai_proxy`。
   诊断一条：`curl -x "$http_proxy" -m 15 -o /dev/null -w '%{http_code}\n' https://www.codebuddy.ai/`（200 正常 / 407 凭据失效 / 000 且耗时极短=代理拒连）。备份与恢复：补丁包 `/root/private_data/backup/proxy-config-260916/proxy-fix-260916.tar.gz`（内含 `使用说明.md`）。
   **代理失效先找现成的包，别手工重写脚本（260917）**：该补丁包已随本 skill 一起入库
-  —— `${CODEBUDDY_SKILL_DIR}/templates/proxy-fix-260916/`（`proxy_env.sh` + `persist_home.sh` + `使用说明.md`）。
+  —— `${CODEBUDDY_SKILL_DIR}/templates/proxy-fix-260916/`（`proxy_env.sh` + `persist_home.sh` + `USAGE.md`）。
   **有包就直接用包**：两个脚本必须放同一目录，整目录 `install` 到 `/usr/local/lib/scnet-proxy/` 并在 `~/.bashrc` 末尾 `source` 即可，
   容器实例上再写一份 `ai_proxy.override.container`（口令从平台控制台抄）；口令轮换只改那一个文件。
   这比按本文档手敲一遍快且不会漏掉 `persist_home.sh` 的实例类型判定。
