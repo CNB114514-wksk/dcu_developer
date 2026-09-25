@@ -76,6 +76,6 @@ MoE 每 chunk 专家权重字节与 M 无关、MACs ∝ M → `AI = M × 0.0306 
 
 ## 模型/存储注意
 
-- **模型放持久区（`$PERSIST_HOME`，用 scnet-container-env skill 的 `persist_home.sh` 识别）**，别拷进 `/root` —— 撑爆镜像层。持久区冷读只影响**头几条请求的 prefill**（页缓存热了后无差别），decode 完全不受影响（权重已进 VRAM）。
+- **模型放持久区（`$PERSIST_HOME`，用 scnet-container-env skill 的 `persist_home.sh` 识别）**，别拷进 `/root` —— 撑爆镜像层。⚠️ **真实流量的冷 prefill 在持久区上是灾难性的**：PLE 随机读直接打 HDD，实测 ~7-12 tok/s（85 ms/tok；合成 prompt 只有零星 PLE 命中，66-220 tok/s，完全掩盖此问题），hermes 一次预热冷跑要 ~27 分钟。**起服务后先把模型分片顺序 `cat` 一遍灌页缓存**（~104 GB @ ~1.5 GB/s ≈ 71s，持久区顺序读 579 MB/s），随机读变内存读即恢复正常；`serve_flashnext.sh` 已内置（`PAGE_WARM=0` 关）。页缓存热后 prefill 与本地盘无差别，decode 始终不受影响（权重已进 VRAM）。
 - 拷 build 目录必须 `--exclude='core.*'`（曾有 2.5 GB core dump 混进去）。
 - 放置判定：有卡容器 GPU MoE 主导；`-ncmoe N` 把 N 层专家留 CPU —— ncmoe 是显存/速度关键旋钮，锚点外推：64 GiB→14，48G→25，32G→35，24G→41。
