@@ -1,11 +1,31 @@
 ---
 name: scnet-container-env
-description: SCNet 容器通用环境装配/排障：node/npm、hermes dashboard、代理网络。
+description: SCNet 容器通用环境装配/排障：持久区定位(persist_home.sh)、node/npm、hermes dashboard、代理网络。
 ---
 
 # SCNet 容器通用环境（非 ComfyUI）
 
 装/配 SCNet 容器里 ComfyUI 之外的通用软件（node/npm、hermes dashboard 等）时用本技能。ComfyUI 相关见 scnet-comfyui-deploy、comfyui-ops 等专门技能，不在此重复。
+
+## 🚨 持久区定位 —— 唯一做法（必须最先走这步）
+
+**任何**需要知道「持久区在哪 / 平台用户名 / 部署类型 / 卡型」的任务，第一步必须：
+
+```sh
+set +u; source ${CODEBUDDY_SKILL_DIR}/templates/persist_home.sh; set -u
+```
+
+（实机副本 /root/O.o-AI/persist_home.sh；随包分发副本 scripts/persist_home.sh。三份同源，改任何一份都要同步其余。）
+
+产出：`DEPLOY_MODE`（notebook / container）、`PERSIST_HOME`、`PLATFORM_USER`、`CARD_SERIES`。判定结果：notebook（主机名 `crdnotebook-*`）→ `PERSIST_HOME=/root/private_data`；有卡容器 → `/work` 或 `/public/home/<user>`（按卡型解析 parastar 挂载）。两类实例的 PERSIST_HOME 是**同一 parastor**（/root/private_data ≡ /work/home/<user>，inode 实测相同）。
+
+**禁止**（26-09-25 用户点名「经常不优先使用这套成品方案」，此前多次因此出 bug）：
+- ❌ 自创 findmnt / mountpoint / df 探测逻辑 —— 脚本内部实现的是 qd 的权威逻辑，用户明确「检测方式参考 qd，勿自创」；
+- ❌ 写死 `/root/private_data` —— 容器实例上持久区在别处，写死在换实例类型时静默错；
+- ❌ 按卡型手写 `/work` vs `/public` 分支 —— 脚本已处理（K100/gfx906/Z100→/work，其余→/public）；
+- ❌ 用 `~`、`/root` 当持久区 —— 那是镜像模板区（系统盘），写大文件会撑爆镜像/盘满死机。
+
+大文件（模型、数据集、GGUF、venv）**一律**放 `$PERSIST_HOME` 下，别写镜像层。涉及代理凭据分域时同样以 `DEPLOY_MODE` 为准（见「网络/代理」节 260916 条）。
 
 ## 网络/代理
 - **Python 包版本遮蔽：requirements 升了但运行进程没升（26-09-02 实锤）**

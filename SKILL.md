@@ -1,10 +1,10 @@
 ---
 name: dcu-developer-skills
-description: 海光 DCU / ComfyUI / SCNet 平台开发技能合集（共 106 个 skill）的总索引。当任务涉及 DCU
+description: 海光 DCU / ComfyUI / SCNet 平台开发技能合集（共 109 个 skill）的总索引。当任务涉及 DCU
   适配与量化推理、ComfyUI 运维与工作流、容器镜像与持久区、平台代理与网关、Skill 编写等场景时使用；本文件给出各领域子技能的位置与选用指引。
 tasks: ""
 ---
-# DCU 开发技能合集（106 个）
+# DCU 开发技能合集（109 个）
 
 介绍：本skill包含了个人在平台里开发镜像时可能踩到的所有坑，可以帮agent一条龙配置好平台镜像所有基础环境
 
@@ -14,7 +14,7 @@ tasks: ""
 
 | 领域 | 数量 | 内容 | 典型子技能 |
 |---|---|---|---|
-| ComfyUI / 模型推理与训练 | 25 | ComfyUI 运维排障、DCU 适配与量化推理、模型下载与工作流处理、MiniMax H3 视频提示词、评测与 vLLM/llama.cpp 部署 | `comfyui-attention-backends`、`comfyui-container-ram-debug`、`comfyui-core-upgrade` |
+| ComfyUI / 模型推理与训练 | 27 | ComfyUI 运维排障、DCU 适配与量化推理、模型下载与工作流处理、MiniMax H3 视频提示词、评测与 vLLM/llama.cpp 部署 | `comfyui-attention-backends`、`comfyui-container-ram-debug`、`comfyui-core-upgrade` |
 | 内容创作与可视化 | 17 | ComfyUI 工作流美化、信息图、架构图、ASCII/视频、Web 设计系统、音乐、手绘动画 | `architecture-diagram`、`ascii-art`、`ascii-video` |
 | 软件开发与调试 | 12 | 系统化调试、TDD、Python/Node 调试、代码审查、精简重构、方案规划、Hermes 技能编写 | `comfyui-node-source-discovery`、`dogfood`、`hermes-agent-skill-authoring` |
 | 办公与文档处理 | 11 | Word/Excel/PPT/PDF、OCR、Google 全家桶、Notion、Airtable、地图 | `airtable`、`google-workspace`、`hermes-docx` |
@@ -30,7 +30,7 @@ tasks: ""
 | 智能家居 | 1 | Hue 灯光控制 | `openhue` |
 | 社媒 | 1 | xurl / X 操作 | `xurl` |
 
-合计 **106** 个 skill。
+合计 **109** 个 skill。
 
 ## 怎么用
 
@@ -46,6 +46,8 @@ cp -rf dcu_developer/comfyui-ops ~/.codebuddy/skills/     # 按需拷单个 skil
 ## 几个入口推荐
 
 - DCU 上模型跑得慢 / 量化选型 → `comfyui-dcu-performance`、`comfyui-dcu-quantized-inference`
+- DCU 上调 llama.cpp/llama-server（测法、NUMA、ub/ncmoe、MMAC）→ `dcu-llm-tuning`
+- 推理性能诊断方法论（roofline/归因/A-B）→ `llm-inference-perf-playbook`
 - ComfyUI 起不来 / 卡启动 / 插件报错 → `comfyui-ops`
 - ComfyUI 内存或显存 OOM → `comfyui-memory-oom`
 - 容器环境、持久区、代理与转发 → `scnet-container-env`、`scnet-gateway-forwarding`
@@ -59,4 +61,4 @@ cp -rf dcu_developer/comfyui-ops ~/.codebuddy/skills/     # 按需拷单个 skil
 - **未收录**：`deepseek-unrestricted` 类别（越狱 prompt）。
 - **改名**：`pdf`/`docx`/`xlsx` → `hermes-pdf`/`hermes-docx`/`hermes-xlsx`（避与官方 plugin 冲突）。
 
-> 全部 106 个 skill 的逐条说明见 [`README.md`](README.md)。
+> 全部 109 个 skill 的逐条说明见 [`README.md`](README.md)。

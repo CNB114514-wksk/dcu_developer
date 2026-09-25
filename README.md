@@ -1,6 +1,6 @@
 # DCU 开发 Skill 集
 
-个人在开发 DCU / ComfyUI 环境下沉淀下来的 skill 合集，共 **106 个**，
+个人在开发 DCU / ComfyUI 环境下沉淀下来的 skill 合集，共 **109 个**，
 覆盖 ComfyUI 与模型推理、容器镜像与平台运维、内容创作、软件开发、办公文档、研究检索等方向。
 
 > 每个 skill 是一个独立目录，目录内 `SKILL.md` 定义该技能的适用场景与工作流，
@@ -10,7 +10,7 @@
 
 | 领域 | 数量 | 主要内容 |
 |---|---|---|
-| ComfyUI / 模型推理与训练 | 25 | ComfyUI 运维、DCU 适配、量化推理、模型与工作流处理、MiniMax H3 视频提示词 |
+| ComfyUI / 模型推理与训练 | 27 | ComfyUI 运维、DCU 适配、量化推理、模型与工作流处理、MiniMax H3 视频提示词 |
 | 内容创作与可视化 | 17 | ComfyUI 工作流美化、信息图、图表、ASCII/视频、Web 设计、音乐、手绘动画 |
 | 软件开发与调试 | 12 | 系统化调试、TDD、Python/Node 调试、代码审查、精简重构、方案规划 |
 | 办公与文档处理 | 11 | Word/Excel/PPT/PDF、OCR、Google 全家桶、Notion、Airtable、地图 |
@@ -26,9 +26,9 @@
 | 智能家居 | 1 | Hue 灯光控制 |
 | 社媒 | 1 | xurl / X 操作 |
 
-共 106 个 skill。
+共 109 个 skill。
 
-## ComfyUI / 模型推理与训练（25）
+## ComfyUI / 模型推理与训练（27）
 
 | skill | 说明 |
 |---|---|
@@ -69,6 +69,8 @@
 | `claude-design` | Design one-off HTML artifacts (landing, deck, prototype). |
 | `comfyui` | Generate images, video, and audio via diffusion workflows. |
 | `comfyui-workflow-beautify` | 美化ComfyUI工作流JSON布局/分组/虚拟连线时用。改副本不动原文件。 |
+| `llm-inference-perf-playbook` | LLM/GPU 推理性能诊断通用流程：实测硬件上限→roofline 算 AI 判断值不值得做→profile 定位→同 binary A/B；含单位口径、NUMA、GPU 预热踩坑与 roofline.py 等脚本。 |
+| `dcu-llm-tuning` | 海光 DCU 上用 llama.cpp 调 LLM 的实测知识：测法规范（预热/-lv 4/验收口径）、NUMA 钉核、ub/ncmoe、手写 MMAC GEMM、已证伪路线与已踩坑。 |
 | `design-md` | Author/validate/export Google's DESIGN.md token spec files. |
 | `excalidraw` | Hand-drawn Excalidraw JSON diagrams (arch, flow, seq). |
 | `humanizer` | Humanize text: strip AI-isms and add real voice. |
@@ -123,7 +125,7 @@
 | `docker-image-ops` | Use for Docker/OCI image ops without docker CLI. |
 | `dsh-ops` | dsh harness 运行期问题——provider API 报错/超时诊断、provider 配置与切换时用. |
 | `scnet-comfyui-deploy` | Use when deploying or troubleshooting ComfyUI on SCNet. |
-| `scnet-container-env` | SCNet 容器通用环境装配/排障：node/npm、hermes dashboard、代理网络。 |
+| `scnet-container-env` | SCNet 容器通用环境装配/排障：持久区定位(persist_home.sh)、node/npm、hermes dashboard、代理网络。 |
 | `scnet-fasttrans-transfer` | Use for SCNet zzefile 快传/rayfile-c file transfers. |
 | `scnet-gateway-forwarding` | SCNet ai-forward网关暴露服务(dsh/ComfyUI)白屏404排障与aiproxy改写方案时用. |
 | `scnet-git-pull` | SCNet 容器从 GitHub 拉取/更新代码时用：ghfast.top 镜像 503 时直连 github。 |
