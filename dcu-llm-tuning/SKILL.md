@@ -62,6 +62,7 @@ description: 海光 DCU（K100AI/gfx928、BW150/gfx936）上用 llama.cpp 调 LL
 - **MMAC fragment 布局两套约定**：K 连续套（`A[l,i]=Am[h][4g+i]`，B 要 bitswap，f16x4 向量加载，快）与 K 步长 4 套（BW150 在用，只能标量加载，慢）。两套各自正确但**参数必须成套**，混用错 192/256。别再误报"gfx928/936 布局不同"。
 - **MoE MMQ 同形状不同量化差 30×**（q6_K 53 TFLOPS vs q4_K 2.5）：q6_K 用 `SRAM_LAYOUT_Q6_K`，其余用 Q8_0/Q8_1 布局 → 疑 LDS bank conflict，未确证。诊断工具：`GGML_MMQ_DEBUG=1`。
 - **上报 `prompt eval time` ≈ 内部 prefill 的 2 倍**：每请求有 ~3.4s（K100AI）/6.2s（bw150）固定开销（疑似尾批触发 graph 重建），与长度无关。对比时明确口径。
+- **prefill 假性变慢/卡死** → parastor mmap 缺页 hang（见「模型/存储注意」第一条）：查 `/proc/<pid>/stack` + `read_bytes` 是否 0。修法 `-lm none --lazy-mode off`。
 - **估显存对账**：MemTotal 与 buffer 换算要 ×1.048576；PLE 表（28.8 GB）本来就在 host 不占显存，别当杠杆动（get_rows 仅 0.2% kernel 时间）。
 
 ## roofline 速算法
@@ -78,6 +79,8 @@ MoE 每 chunk 专家权重字节与 M 无关、MACs ∝ M → `AI = M × 0.0306 
 
 ## 模型/存储注意
 
-- **模型放持久区（`$PERSIST_HOME`，用 scnet-container-env skill 的 `persist_home.sh` 识别）**，别拷进 `/root` —— 撑爆镜像层。⚠️ **真实流量的冷 prefill 在持久区上是灾难性的**：实测 ~7-12 tok/s（85 ms/tok），热态 ~110-155 tok/s（差 ~15×）。机制（2026-09-26 实测修正）：parastor 是宿主机挂载的网络 FS，**随机读的加速靠宿主机侧的 parastor 客户端缓存**（顺序 `cat` 模型分片一遍即灌满，~104 GB @ ~1.5 GB/s ≈ 71s），不是容器页缓存（模型 mmap 页在容器 cache 里一个不留）；CPU 专家权重（~22 GiB）加载时直接进 anon 内存永不逐出。**冷读死循环的解法**：`warm_model_cache.sh` 重灌 60s，或重启 serve（脚本内置 `PAGE_WARM` 三态：unset=auto 仅 RAM 限额 ≥100 GiB 才灌，=1 强制，=0 关；bw150 单卡 RAM 只有 64 GiB，会自动跳过）。
+- **模型放持久区（`$PERSIST_HOME`，用 scnet-container-env skill 的 `persist_home.sh` 识别）**，别拷进 `/root`（撑爆镜像层）。⚠️⚠️ **网络 FS（parastor）上 mmap 会卡死**：实测主线程内核栈卡在 `lock_blkgrp_sync [parastor]` ← `__lcli_do_filemap_fault` ← `handle_mm_fault` —— parastor 的 **mmap 缺页路径间歇性 hang，read() 路径不卡**。症状极像“慢”：进度计时把卡死时间摊平 → 假性 7-12 tok/s；**判据 = 读盘 0 MB/s + processed 计数长时间不动**（`/proc/<pid>/stack` 看内核栈定性）。
+- **修复（实测 674-813 tok/s，比本地盘副本还快 2×）**：`-lm none` **+ `--lazy-mode off`**。只加 `-lm none` 不够 —— 本 fork 的 `--lazy-mode` 默认 auto，会给 >4 GiB 张量打 lazy 标记（PLE 表 28.8 GB 必中），loader 里 `if (use_mmap || lazy.any())` 因此仍强制建文件映射。两个都加后：全部 host 权重走 read() 进 anon，**运行期零文件映射**（验收：`grep -c 模型文件 /proc/<pid>/smaps` = 0、RssAnon ≈ 52 GiB、RssFile 几十 MB）。15k 冷刷 22 秒（原 20-27 分钟）。
+- **RAM 代价**：host 侧权重全量常驻 anon ≈ 52 GiB（K100AI 119 GiB ✓；bw150 单卡 64 GiB 装不下）。脚本 `NO_MMAP` 三态（auto/1/0，auto = RAM 限额 ≥100 GiB 才开），生效时自动跳过 page-warm。
 - 拷 build 目录必须 `--exclude='core.*'`（曾有 2.5 GB core dump 混进去）。
 - 放置判定：有卡容器 GPU MoE 主导；`-ncmoe N` 把 N 层专家留 CPU —— ncmoe 是显存/速度关键旋钮，锚点外推：64 GiB→14，48G→25，32G→35，24G→41。
