@@ -61,6 +61,56 @@ set +u; source ${CODEBUDDY_SKILL_DIR}/templates/persist_home.sh; set -u
 - **魔改文件内嵌逻辑的测试法（不依赖真实下载）**：folder_paths.py 头部块会连带 `import hook_by_xu`，整文件 import 需要 ComfyUI 上下文。隔离验证：读源码 `split('import time\nimport mimetypes')[0]` 取头部块，exec 到临时 namespace（塞 os），即可单测 `_build_aria2c_cmd`/`_speed_monitor`——测速用真实 aria2c 子进程 + 临时改小窗口（300→15/25s），或假文件+后台线程 append 模拟（v2 用 /proc io，须真进程）；logging 断言用假模块替换 sys.modules['logging'] 捕获（logging 输出走 handler，redirect_stderr 抓不到）。
 - **测速类控制器的双向验证（26-09-02 自适应线程收尾清单）**：低速触发路径（真实受限下载 → WARN 日志 + 状态文件落盘 + cmd 变 -x16）和高速维持路径（预热爬坡后再开测速窗口 → INFO 日志 + 无状态文件）都要跑；高速用例若在爬坡期开窗会假阳性"降级"——cnb 前 1-2min 只有 7-19MiB/s。全链收尾：持久区 cp+cmp 一致 → pytest 对照法（git stash 干净 master 同子集对照预置 ERROR 数）→ 重启实例（kill + qd）后 ps -o lstart 确认晚于文件 mtime。
 
+## 镜像仓库：没有 docker 也能拉 SCNet Harbor 镜像（26-09-26 实测）
+
+**背景**：交付容器里**通常没有 docker/podman/skopeo**（`command -v` 全空、无 `/var/run/docker.sock`），
+但平台文档的标准用法是 `docker pull appstore.scnet.cn:5000/...` → 需要一套不依赖 docker 的等价做法。
+
+**关键事实**：`appstore.scnet.cn:5000` 是 Harbor，**公开镜像也走匿名 Bearer token**
+（`GET /v2/` 直接返回 401 是正常的，401 响应头 `Www-Authenticate: Bearer realm="https://appstore.scnet.cn:5000/service/token",service="harbor-registry"` 就是 token 服务地址）。
+**所以公开镜像不需要任何凭据**，curl 就能拉。
+
+### 三步拉取（curl，无需 docker）
+
+```sh
+REG=appstore.scnet.cn:5000
+REPO=aihub/dcu/eq1qe/jupyter_qwen-3.8-flash   # 仓库路径 = 镜像名去掉 registry 前缀和 tag
+TAG=v1.1
+
+# 1) 匿名 token
+TOKEN=$(curl -s "https://$REG/service/token?service=harbor-registry&scope=repository:$REPO:pull" \
+        | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+
+# 2) manifest（★ 必须带 Accept，否则可能拿到 manifest list 而不是具体平台）
+curl -s -H "Authorization: Bearer $TOKEN" \
+  -H 'Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json' \
+  "https://$REG/v2/$REPO/manifests/$TAG" -o man.json
+
+# 3) 先取 config（~70KB，含 Env/Labels/Cmd/构建历史，最省事的侦察入口）
+CFG=$(python3 -c "import json;print(json.load(open('man.json'))['config']['digest'])")
+curl -s -H "Authorization: Bearer $TOKEN" "https://$REG/v2/$REPO/blobs/$CFG" -o imgcfg.json
+# 层：https://$REG/v2/$REPO/blobs/<layer digest>（gzip tar，可直接解）
+```
+
+- **体积口径要分清**：`man.json` 的 `layers[].size` 是**压缩后**；Harbor 页面/API 的 size 常是**解压后**
+  （实测同一镜像：层合计 **9.9 GB** ↔ 页面写 **37.2 GB**）。按层合计估下载量，按页面值估落盘量。
+- 层是 `gzip` tar，可 `curl … | tar -xz -C <dir>` 顺序展开成 flattened rootfs（不需要 docker）。
+- 拉之前先看磁盘，**落持久区、别写镜像层**（见本 skill 顶部存储分层规矩）。
+
+### 顺带：aihub 镜像页面的文字内容怎么拿
+
+页面（`https://www.scnet.cn/ui/aihub/image/<user>/<id>`）是 Nuxt SPA（`data-ssr="false"`），HTML 里没内容；
+直接猜 `/api/...` 全 404。**公开 README 走这个接口（无需登录）**：
+
+```sh
+curl -s "https://www.scnet.cn/acx/aihub/images/image/detail?imageId=<id>" \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['data']['readme'])"
+```
+
+- 版本列表：`POST https://www.scnet.cn/acx/aihub/images/image/version/query`，body `{"page":1,"size":999,"imageId":"<id>"}`。
+- 前缀 `/acx` 是从前端 JS 里挖出来的（`dC.ACX="acx"`，`kt()` 的 baseURL）；`/acx/api/...` 是错的。
+- 直连 egress 被封时要带代理（见「网络/代理」节）。
+
 ## Node / npm
 - 容器自带 node v24.18.1、npm 11.16.0。
 - **DeepSeek Harness（dsh，26-09-02 装机实测）**：npm 装 `@deepseek-ai/dsh` 注意三点——① 全局安装走 http_proxy 且**必须后台跑**（454 包 8 分钟，前台 570s 超时闸会拦）；② npm 11.17 的 allow-scripts 机制默认**拦截安装脚本**（warning 列出 koffi/node-pty 等），但 dsh 各原生模块带全平台 prebuilds（含 linux-x64），不补跑也能用；③ node fetch **不读 http_proxy env**，出口被封的环境必须 `NODE_USE_ENV_PROXY=1` 才能连外网 LLM API（`dsh --profile headless "..."` 可快速验证模型链路）。配置在 `$DSH_HOME`（/root/.dsh）：`settings.yaml` 配自定义 provider（llm-pi-ai.providers 段：baseURL/apiKeyEnv/api: openai-completions + compat.supportsDeveloperRole:false / maxTokensField:max_tokens 中转站兜底；agent-default-model 设默认模型），改配置不重启生效。**DSH 网页端绑定限制与绕过（26-09-07 实测定案）**：CLI 层拦 `--host 0.0.0.0`（报错原文 "intentionally not supported yet for safety: it would expose remote code execution"），但底层 webserver 配置 schema 本身允许 `z.union([z.const("127.0.0.1"), z.const("0.0.0.0")])`——只是 CLI 没给入口，**用 `--patch` 配置覆盖可绕过 CLI 拦截**：写 `- id: webserver\n  config:\n    host: 0.0.0.0\n    port: <N>` 到 yml，`dsh --profile web --patch <yml> --no-open` 启动即绑 0.0.0.0（⚠️ patch 的 config 校验是插件级 required——**port 必须一并写在 patch 里**，只写 host 会 `$.port missing required value` 启动崩；`--patch` 是顶层全局选项，放 `dsh web` 子命令后报 unknown option，正确形态 `dsh --profile web --patch ...`）。跑起来后 banner 会自己打出 `(LAN: http://<容器IP>:<port>)` 即成功实锤。绕过的安全代价自担：3080 直暴露=无认证 RCE 面，仅限平台 NAT 后的容器实例（公网入口还要过平台映射层），且 --trusted-host 围栏仍在。**26-09-07 起口令闸已关（用户要求 /dsh/ 免口令直进）**：dsh_gate.pw 改名 `.disabled` 留档；aiproxy 闸逻辑在 DSH_GATE_KEY 为空（key 文件缺失+env 未设）时整体跳过、不拦任何请求，外网 `https://<域名>:58043/dsh/` 直接进。恢复口令：`mv dsh_gate.pw.disabled dsh_gate.pw && aiproxy.py stop && aiproxy.py start`（跑 `ai passwd` / `dshweb --passwd` 写新口令文件也会隐式重开闸）。dshweb（/root/O.o-AI/dshweb，模板 ${CODEBUDDY_SKILL_DIR}/templates/dshweb.sh）：start/stop/status/--passwd(重设口令并重启 aiproxy 生效)/--url，启动自带 NODE_USE_ENV_PROXY、scnet+tokenrhythm key 注入（与 settings.yaml 的 apiKeyEnv 清单同步）、trusted-host、幂等拉 aiproxy、cd 持久区 workspace；DSHWEB_QUIET=1 静默（供 ai 委托）。**26-09-07 晚 dsh 公网暴露第三版（终版）已合入**（交付包 /root/private_data/dsh-patch-delivery-260907.tar.gz；二版文件备份 /root/O.o-AI/*.bak-2nd）：dsh 本体一律绑 **127.0.0.1:3081**（bind0.yml host 固定回环、port 必填），aiproxy **双监听 9100（主转发不变）+ 3080 整口 → 3081**，整口转发时 Origin 重写为 `http://<Host>` + Sec-Fetch-Site 统一 same-origin 过 dsh 围栏。推翻第二版直绑方案的原因：容器实例真实公网入口是平台 nginx 改写 Host 型网关 `ai01.hpccube.com:65016/ai-forward/<32hex><7位补零端口>/`，浏览器 Origin（网关域名）与 dsh 收到 Host（容器IP:3080）永不同源 → /api 全 403（"网页空白"表象）；hex 实例内探测不到，公网地址只能从容器实例控制台看（各脚本提示已带链接）→ 手写 /root/.dsh/ext-host（第三版仅展示/备用，围栏由 Origin 重写兜住）+ ext-port。**26-09-08 晚第四版（零配置，推翻三版"hex 不可知=必须人工写"定案）：aiproxy 新增相对路径化改写——无 /root/.dsh/ext-prefix 时对 dsh 文本响应做"根绝对→./相对"改写（HTML/manifest/JS 配对锚点 + CSS 的 url(/assets/→url(./ 特例），浏览器按当前页面 URL 自动拼回任意网关前缀，镜像带零配置态保存即开箱即用（ext-prefix 保留为人工覆盖逃生口，⚠️ 保存镜像前须删除，误烤入带 hex 值会让新实例白屏复发）；实锤依据=网关剥前缀转发且零线索头（9119 探针法）+ dsh JS bundle 零根绝对路径字面量；WS 真实端点 /api/events.mux 与 /api/events.host（升级路由精确匹配、未注册路径/围栏失败均静默 RST 零响应）、aiproxy SSE 分支加 HTTP/1.0 chunked 兼容。机制/排障/验收清单见 ${CODEBUDDY_SKILL_DIR}/references/dsh-direct-bind-3080.md 第四版节。**合入时发现并修复交付件 2 bug（本地 aiproxy.py 已修；26-09-08 容器实例实机已运行修复版并全通）**：① `_serve()` 里 3080 bind 裸奔无 try——3080 被占（notebook 残留旧 dsh 等）整个 daemon 崩、9100 陪葬，已加 `except OSError` 降级（跳过整口、9100 照常）；② 旧形态 dsh 进程（cmdline=`dsh web --port 3080`）残留占 3080 会触发①，升级/排障时先 pkill 两代形态再 restart。notebook 回归全通（9100/dsh 200、3080 整口 200、外网 :58043/dsh/ 200、WS mux 426、/hermes 200），3080 无平台映射暴露面不变。三版演进/围栏判定/回归记录见 ${CODEBUDDY_SKILL_DIR}/references/dsh-direct-bind-3080.md。**其余端口容器实例直映射结论（26-09-07 盘点）**：8188(ComfyUI)/7860(ui gradio)/9119(hermesweb) 本就绑 0.0.0.0，创建实例时声明即可直映射公网，与 notebook 的 9100 链路并存互不影响；仅 3080 需要 patch 绕过（已内置）、9100 平台不支持。**26-09-03 起 `ai` 命令=启动 harness**（内部调 dshweb + 打印外网地址/口令，子命令 start/passwd/stop/restart/status/log/url/hermes/route/exclude）；原 hermes 网页启动器改名 `hermesweb`（ai hermes 透传）。**ai banner 外网行（26-09-03 用户明确）**：不留 `?key=<口令>` 占位符，直接拼口令输出完整可复制地址——`echo "  外网   : $EXTERNAL_URL/dsh/?key=$(gate_key)"`（纯地址，**不加解释性括注**——"(口令已拼好, 永久免重输)"等文案 26-09-03 用户明确要求去掉，banner 行保持极简）；此行用户曾手改后因实例重启回退，见下方「系统盘改动会丢」条。模板 aiproxy.py = pre-dsh 基线（故意不含 /dsh 路由与改写机制：新容器无口令文件，路由在=裸奔 RCE）；权威版本是实机 /root/O.o-AI/aiproxy.py（含 26-09-03 子路径改写），部署 dsh 时以实机为准。**26-09-03 增量（SCNet 接入+持久化三件套）**：settings.yaml 加 scnet provider 且 agent-default-model=scnet/SCNet-Max（免费），SCNET_API_KEY 与 hermes 共用 ~/.hermes/.env（dshweb 启动注入——**settings.yaml 加 provider 必须同步启动器 key 注入清单**）；dshweb 启动 cd 到自动探测的持久区 workspace（detect_workspace **照抄 qd 权威逻辑**：rocm-smi Card Series gfx906/Z100/K100→/work 其余→/public，**无输出=无卡 notebook→/root/private_data 映射即真持久区**，ai_passwd 权威优先+目录名回退跳 lost+found，兜底 /root；/root/private_data 在有卡容器只是绑定映射且部分卡型映射不了，用户明确"检测方式参考 qd"勿自创 findmnt/mountpoint 逻辑；检测统一为共享脚本见 qdcpu 维护规则节；workspaceRoot=进程 cwd，`readlink /proc/<pid>/cwd` 验证）；hermes 98 个 skill 已扁平迁入 /root/.dsh/skills（DSH user-dsh 技能根；dump 里 skill-filesystem 的 disabled:true 不阻止发现，headless 实测能列出全部，别去"修"它）；/root/setup_dsh.sh=交互式换 key/选默认模型+重启+headless 实测（仿 setup_openclaw.sh；免交互喂 key `printf '%s\n\n\n' '<key>' | bash /root/setup_dsh.sh`）；DSH 自带 skill first-chat-api-notice（每会话首次交谈**建议**用户换自己的 key 防共享限流，自称 harness，用户发 sk- key 就代跑脚本）。细节见 ${CODEBUDDY_SKILL_DIR}/references/deepseek-harness.md「workspace 持久化 / skills 迁移 / API 导入」节。模板 dshweb.sh / ai-launcher.sh 落后实机此增量，恢复时以 /root/O.o-AI/ 实物为准重新备份。**DSH 子路径反代响应改写**（26-09-03 白屏根因+全解）：dsh 前端硬编码根绝对路径且无 base-path 配置，直挂 /dsh 必白屏——aiproxy 对其文本响应做冠前缀改写 + no_compress 剥 Accept-Encoding + Location 冠前缀 + 透传浏览器 Host 过信任围栏；实锤坑（text/javascript 白名单漏匹配、API_PATH 常量在 dsh-client-connection bundle、langs 为哈希文件名、收尾须硬刷新）与验收清单见 ${CODEBUDDY_SKILL_DIR}/references/deepseek-harness.md「/dsh 子路径反代」节。**DSH 工具层两大报错**（Bash "no sandbox backend" / Glob "timed out after 30000ms"）：修法=profile 补丁层 /root/.dsh/profiles/*/cordis.patch.yml 切 danger-full-access + fs-search timeoutMs 放宽；⚠️ patch 的 config 是整体替换（漏必填字段会让插件树加载失败、dsh 起不来），验证必须用 `--dump-config`（`--dump-default-config` 不含补丁层会误判未生效）——详见 ${CODEBUDDY_SKILL_DIR}/references/deepseek-harness.md「profile 补丁层」节。

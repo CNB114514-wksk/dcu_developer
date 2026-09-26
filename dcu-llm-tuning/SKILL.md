@@ -40,6 +40,17 @@ description: 海光 DCU（K100AI/gfx928、BW150/gfx936）上用 llama.cpp 调 LL
 5. **MoE 设备侧 MMQ 补丁（M1，~2.2×）**：gfx928 被归类 CDNA2 → `should_use_mmq` 拒绝量化 MoE → 落 host fallback（512 次 per-expert GEMM + 2 次 streamSync + 不可入图）。补丁：`mmq.cu` 加 `if (GGML_CUDA_CC_IS_HYGON_DCU(cc)) return n_experts > 0;`。连带修掉了 hipGraphExecUpdate 段错误（MoE op 稳定入图后不再反复 update）。
 6. **前缀缓存（服务层最大杠杆）**：混合 SSM 模型 warm TTFT 地板 ~2s（前缀缓存恢复开销），但冷启动 15k prompt ≈ 40-64s。**预热一次固定前缀后，所有请求（含全新 session）首字 2-3s**。`PREWARM=1` 已内置。
 
+## 长上下文 / 显存切分（64 GiB 卡冲 262K，2026-09-26 实测）
+
+目标：吃满模型上限 262144 ctx。约束全在显存（K100AI 64 GiB），与 RAM 无关。
+
+- **KV 必须量化**：KV(f16)@262K = 6 GiB，放不下；`-ctk/-ctv q8_0` 减半到 3 GiB 才够（质量损失实测极小，文本/视觉均正常）。
+- **prefill 计算缓冲 ≈ ub 线性**：ub=4096 → 7.85 GiB、2048 → 4.0、512 → ~1.1。它**不随 ctx/ncmoe 变**，是长上下文的主要挤压项。
+- **可行组合（262K 满上下文）**：`ncmoe=14 + KV q8_0 + ub=512` → VRAM 63784/65520 MiB（余 ~1.7 GiB）；prefill **277** / decode **14** tok/s。文本、512-token 长生成、视觉(mmproj) 三条路径实测全通过。
+- **128K 对照**：`ncmoe=14 + q8_0 + ub=2048` → prefill **400** tok/s（比 262K 快 1.44×），decode 同为 ~14。若不追满 ctx，这个更快。
+- **ncmoe=12 放不下 128K**（即使 ub=2048/q8_0）——权重侧太大；ncmoe=14 是长上下文的前提。
+- ⚠️ **坑（血的教训）**：只调 ctx 不调 ub → **加载成功但运行时 `ROCm error: out of memory`**。加载时显存用到 65472/65520（只剩 ~50 MiB），`/health` 返回 ok，但第一次生成就崩。**验收必须"加载 + 真跑一次生成不崩"，不能只看 health**（写扫描脚本时尤其注意）。
+
 ## 已证伪清单（别再试）
 
 - ❌ **MPOL_INTERLEAVE**：被 numa_balancing=1（容器内只读）中和；钉节点时无差别，不钉时反而慢 8-10%。
@@ -63,6 +74,8 @@ description: 海光 DCU（K100AI/gfx928、BW150/gfx936）上用 llama.cpp 调 LL
 - **MoE MMQ 同形状不同量化差 30×**（q6_K 53 TFLOPS vs q4_K 2.5）：q6_K 用 `SRAM_LAYOUT_Q6_K`，其余用 Q8_0/Q8_1 布局 → 疑 LDS bank conflict，未确证。诊断工具：`GGML_MMQ_DEBUG=1`。
 - **上报 `prompt eval time` ≈ 内部 prefill 的 2 倍**：每请求有 ~3.4s（K100AI）/6.2s（bw150）固定开销（疑似尾批触发 graph 重建），与长度无关。对比时明确口径。
 - **prefill 假性变慢/卡死** → parastor mmap 缺页 hang（见「模型/存储注意」第一条）：查 `/proc/<pid>/stack` + `read_bytes` 是否 0。修法 `-lm none --lazy-mode off`。
+- **偶发整段 `/////` 复读退化**（reasoning 全是斜杠、content 空、生成满 n_predict 才停；hermes 侧表现为「卡 2 分钟没回复」）→ **temperature=1.0 太高**。llama.cpp 默认就是 1.0，本模型 GGUF 也内嵌 1.0（top_k=20/top_p=0.95/min_p=0.05），但实测会偶发复读。修法：`--temp 0.6`（Qwen3 系思考模式官方值）+ `--repeat-penalty 1.05 --repeat-last-n 64`（窗口小，只打断短周期循环，不动长程）。⚠️ **hermes 会在 `extra_body` 里硬发 `temperature`，覆盖服务端默认** —— 必须同时改 `~/.hermes/config.yaml` 的 provider `extra_body.temperature`（原 1.0 → 0.6）。⚠️ 该退化是**间歇性**的（复现率 ~1/7），单次测不出，别用一次 A/B 下结论。
+- **hermes 上下文被钉死**：`~/.hermes/config.yaml` 里 `models[].context_length: 65536` 会覆盖 provider 上报值（日志 `context_pin: ... the pin wins`），TUI 显示 `0/65.5K`。要放开就把该值改成服务端 `n_ctx`（如 262144）。
 - **估显存对账**：MemTotal 与 buffer 换算要 ×1.048576；PLE 表（28.8 GB）本来就在 host 不占显存，别当杠杆动（get_rows 仅 0.2% kernel 时间）。
 
 ## roofline 速算法
@@ -74,6 +87,8 @@ MoE 每 chunk 专家权重字节与 M 无关、MACs ∝ M → `AI = M × 0.0306 
 | prompt | K100AI prefill/首字/decode | BW150 prefill/首字/decode |
 |---:|---|---|
 | 10247 | 377 t/s / 27.2s / 13.7 t/s | 321 t/s / 32.0s / 22.2 t/s |
+
+**262K 长上下文配置（2026-09-26，K100AI，ncmoe=14/q8_0 KV/ub=512/ctx=262144）**：prefill **277 t/s**、decode **14 t/s**（1217-token prompt 实测）。128K 变体（ub=2048）prefill 400 t/s。
 
 规律：prefill t/s 随长度升并趋平（短 prompt 摊不薄固定开销，别用短 prompt 代表整体）；首字 ≈ prompt÷prefill 速率；decode 当常数。
 
