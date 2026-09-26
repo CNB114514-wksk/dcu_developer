@@ -78,6 +78,6 @@ MoE 每 chunk 专家权重字节与 M 无关、MACs ∝ M → `AI = M × 0.0306 
 
 ## 模型/存储注意
 
-- **模型放持久区（`$PERSIST_HOME`，用 scnet-container-env skill 的 `persist_home.sh` 识别）**，别拷进 `/root` —— 撑爆镜像层。⚠️ **真实流量的冷 prefill 在持久区上是灾难性的**：PLE 随机读直接打 HDD，实测 ~7-12 tok/s（85 ms/tok；合成 prompt 只有零星 PLE 命中，66-220 tok/s，完全掩盖此问题），hermes 一次预热冷跑要 ~27 分钟。**起服务后先把模型分片顺序 `cat` 一遍灌页缓存**（~104 GB @ ~1.5 GB/s ≈ 71s，持久区顺序读 579 MB/s），随机读变内存读即恢复正常；`serve_flashnext.sh` 已内置（`PAGE_WARM=0` 关）。页缓存热后 prefill 与本地盘无差别，decode 始终不受影响（权重已进 VRAM）。
+- **模型放持久区（`$PERSIST_HOME`，用 scnet-container-env skill 的 `persist_home.sh` 识别）**，别拷进 `/root` —— 撑爆镜像层。⚠️ **真实流量的冷 prefill 在持久区上是灾难性的**：实测 ~7-12 tok/s（85 ms/tok），热态 ~110-155 tok/s（差 ~15×）。机制（2026-09-26 实测修正）：parastor 是宿主机挂载的网络 FS，**随机读的加速靠宿主机侧的 parastor 客户端缓存**（顺序 `cat` 模型分片一遍即灌满，~104 GB @ ~1.5 GB/s ≈ 71s），不是容器页缓存（模型 mmap 页在容器 cache 里一个不留）；CPU 专家权重（~22 GiB）加载时直接进 anon 内存永不逐出。**冷读死循环的解法**：`warm_model_cache.sh` 重灌 60s，或重启 serve（脚本已内置 `PAGE_WARM`）。
 - 拷 build 目录必须 `--exclude='core.*'`（曾有 2.5 GB core dump 混进去）。
 - 放置判定：有卡容器 GPU MoE 主导；`-ncmoe N` 把 N 层专家留 CPU —— ncmoe 是显存/速度关键旋钮，锚点外推：64 GiB→14，48G→25，32G→35，24G→41。
