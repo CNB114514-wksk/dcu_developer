@@ -55,7 +55,7 @@ cp -rf dcu_developer/comfyui-ops ~/.codebuddy/skills/     # 按需拷单个 skil
 
 ## 来源与适配说明
 
-- **来源**：个人在 DCU / ComfyUI 环境下使用 Hermes agent 期间自产的 skill 库。
+- **来源**：个人在 DCU 环境下开发适配各种大模型推理产生的skill，包含各种踩过的坑
 - **格式适配**：`SKILL.md` frontmatter 只保留 `name` / `description`；`triggers` 折进 `description`；正文相对路径改写为 `${CODEBUDDY_SKILL_DIR}/…`。
 - **凭据清洗**：已清除写死的平台代理 URL（含真实口令），改为动态读取 `proxy_env.sh` / `$http_proxy`。
 - **未收录**：`deepseek-unrestricted` 类别（越狱 prompt）。
