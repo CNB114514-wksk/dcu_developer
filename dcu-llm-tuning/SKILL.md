@@ -49,7 +49,9 @@ description: 海光 DCU（K100AI/gfx928、BW150/gfx936）上用 llama.cpp 调 LL
 - ❌ **强制 dense Q4_K 走 MMQ**：比 dequant+cublas 慢 7.6%，上游 dense 启发式是对的。
 - ❌ **调参救 prefill**：加线程更慢（t16 6.84 → t128 8.35 ms/tok）、ubatch 无影响、`-tb` 明显有害 → **没有任何 server flag 能改善 prefill**，只能 kernel 级。
 - ❌ **MFMA 路线**（`+mai-insts` 等）：gfx928 汇编器直接 invalid instruction。矩阵核出路是 MMAC。
+- ❌ **调 MMQ CDNA 配置（J/nthreads/stream_k）**：MMQ Q4_K 只占 GPU 时间 29%，调快 30% 也只影响整体 ~5%，收益/风险不成比例。
 - ❌ **graphs 提速**：补丁后 graphs 稳定无段错误，但对吞吐零收益（3.73 vs 3.73 ms/tok）。
+- 💡 **prefill 的最后一块现实杠杆是提示词体积**（固定前缀 ~15k token，冷 prefill 线性，砍到 5k 冷启动就能进 20s）——kernel 都优化到头后，下一个该看的是 prompt，不是参数。
 
 ## 已踩坑（现象 → 根因）
 
