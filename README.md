@@ -1,6 +1,6 @@
 # DCU 开发 Skill 集
 
-个人在开发 DCU / ComfyUI 环境下沉淀下来的 skill 合集，共 **109 个**，
+个人在开发 DCU / ComfyUI 环境下沉淀下来的 skill 合集，共 **114 个**，
 覆盖 ComfyUI 与模型推理、容器镜像与平台运维、内容创作、软件开发、办公文档、研究检索等方向。
 
 > 每个 skill 是一个独立目录，目录内 `SKILL.md` 定义该技能的适用场景与工作流，
@@ -10,11 +10,11 @@
 
 | 领域 | 数量 | 主要内容 |
 |---|---|---|
-| ComfyUI / 模型推理与训练 | 27 | ComfyUI 运维、DCU 适配、量化推理、模型与工作流处理、MiniMax H3 视频提示词 |
-| 内容创作与可视化 | 17 | ComfyUI 工作流美化、信息图、图表、ASCII/视频、Web 设计、音乐、手绘动画 |
+| ComfyUI / 模型推理与训练 | 29 | ComfyUI 运维、DCU 适配、量化推理、模型与工作流处理、MiniMax H3 视频提示词 |
+| 内容创作与可视化 | 19 | ComfyUI 工作流美化、信息图、图表、ASCII/视频、Web 设计、音乐、手绘动画 |
 | 软件开发与调试 | 12 | 系统化调试、TDD、Python/Node 调试、代码审查、精简重构、方案规划 |
 | 办公与文档处理 | 11 | Word/Excel/PPT/PDF、OCR、Google 全家桶、Notion、Airtable、地图 |
-| 容器镜像与平台运维 | 10 | SCNet 平台环境、Docker 镜像手术、持久区、网关转发、镜像打包 |
+| 容器镜像与平台运维 | 12 | SCNet 平台环境、Docker 镜像手术、持久区、网关转发、镜像打包 |
 | 研究与信息检索 | 7 | arXiv、论文写作、引用核验、事实核查、Polymarket、博客监控 |
 | AI Agent 协作 | 6 | Hermes 本体与自定义 provider、Claude Code/Codex/OpenCode、桌面自动化 |
 | GitHub 工作流 | 6 | 认证、Issue、PR、代码审查、仓库管理、代码库勘察 |
@@ -26,9 +26,9 @@
 | 智能家居 | 1 | Hue 灯光控制 |
 | 社媒 | 1 | xurl / X 操作 |
 
-共 109 个 skill。
+共 114 个 skill。
 
-## ComfyUI / 模型推理与训练（27）
+## ComfyUI / 模型推理与训练（29）
 
 | skill | 说明 |
 |---|---|
@@ -42,9 +42,13 @@
 | `comfyui-ops` | ComfyUI 起不来/卡启动/插件报错时用：诊断、禁用插件、批量清理、hf-mirror 下载。 |
 | `comfyui-workflow-json-editing` | 美化/编辑 ComfyUI 工作流 JSON：布局分组、SetNode/GetNode 虚拟连线改造、一致性校验。 |
 | `comfyui-workflow-model-audit` | 导入外部 ComfyUI 工作流时校对模型引用与本地文件，修正名字不匹配。 |
+| `dcu-hardware-cardmap` | 海光 DCU 卡型 / gfx 架构对照表 + gfx928 只有 MMAC 没有 MFMA 的 ISA 事实；评估 ROCm 项目迁移、判断 kernel 可用性时用。 |
+| `dcu-quant-format-limits` | DCU 量化格式边界实测：不支持 FP8/FP4、int4 仅 gfx936、gfx928 最高 int8；含 gfx928 线程/VGPR/LDS 预算、int8 grouped MoE 配方与 MXFP4 反例。 |
 | `evaluating-llms-harness` | lm-eval-harness: benchmark LLMs (MMLU, GSM8K, etc.). |
 | `huggingface-hub` | HuggingFace hf CLI: search/download/upload models, datasets. |
 | `llama-cpp` | llama.cpp local GGUF inference + HF Hub model discovery. |
+| `llama-cpp-dcu` | 海光 DCU（gfx906/926/928/936/938）上编译/运行 llama.cpp 的排障：乱码、NaN、SIGSEGV/SIGILL、MFMA 不可用、多架构 fatbin。 |
+| `qwen38-flashnext-dcu-tuning` | Qwen3.8-Flash-Next 在 K100_AI 上的部署调优手册：四档配置、n-gram 投机、host-direct、ncmoe/ub 选择、API-only 部署机验收。 |
 | `minimax-h3-3d-animation` | 将一句话创意转化为完整风格化3D动画短片的制作流程。含中文版SKILL.cn.md。 |
 | `minimax-h3-brand-promo` | 将品牌信息转化为精美宣传短片的制作流程，含产品能力展示、使用场景和行动号召。 |
 | `minimax-h3-coop-game` | 创建双人合作游戏菜单或开场动画的制作流程，含角色卡、UI排版和互动动效。 |
@@ -58,7 +62,7 @@
 | `serving-llms-vllm` | vLLM: high-throughput LLM serving, OpenAI API, quantization. |
 | `weights-and-biases` | W&B: log ML experiments, sweeps, model registry, dashboards. |
 
-## 内容创作与可视化（17）
+## 内容创作与可视化（19）
 
 | skill | 说明 |
 |---|---|
@@ -115,7 +119,7 @@
 | `powerpoint` | Create, read, edit .pptx decks, slides, notes, templates. |
 | `teams-meeting-pipeline` | Teams meeting summaries, job replay, Graph subscriptions. |
 
-## 容器镜像与平台运维（10）
+## 容器镜像与平台运维（12）
 
 | skill | 说明 |
 |---|---|
@@ -127,7 +131,9 @@
 | `scnet-comfyui-deploy` | Use when deploying or troubleshooting ComfyUI on SCNet. |
 | `scnet-container-env` | SCNet 容器通用环境装配/排障：持久区定位(persist_home.sh)、node/npm、hermes dashboard、代理网络。 |
 | `scnet-fasttrans-transfer` | Use for SCNet zzefile 快传/rayfile-c file transfers. |
+| `scnet-model-git-upload` | 上传私有模型到 SCNet 模型管理（git+LFS，gitlab.scnet.cn:9002/model/<user>/personnal.git），含 LFS 超时/持久区/镜像保存防坑 |
 | `scnet-gateway-forwarding` | SCNet ai-forward网关暴露服务(dsh/ComfyUI)白屏404排障与aiproxy改写方案时用. |
+| `scnet-instance-file-scope` | 判断文件属于哪个实例哪块存储（系统盘/parastor/public_data），跨实例找文件与清理前必读 |
 | `scnet-git-pull` | SCNet 容器从 GitHub 拉取/更新代码时用：ghfast.top 镜像 503 时直连 github。 |
 
 ## 研究与信息检索（7）

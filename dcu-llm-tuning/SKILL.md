@@ -7,6 +7,9 @@ description: 海光 DCU（K100AI/gfx928、BW150/gfx936）上用 llama.cpp 调 LL
 
 适用：在 SCNet 容器的海光 DCU 上跑/调 llama.cpp（llama-server）推理。所有结论 2026-09-24/25 于 K100AI(gfx928) 与 BW150(gfx936) 实测得出。
 
+> 具体到 **Qwen3.8-Flash-Next（qwen4exp）** 的部署/调优（3.4/3.5 实验、三档配置、n-gram 投机、host-direct、负结果清单），
+> 见独立 skill **`qwen38-flashnext-dcu-tuning`**；本 skill 保留通用机制与 9 月基线。
+
 ## 硬件事实（先记住，别再搞错）
 
 | | K100AI | BW150 |
