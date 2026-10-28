@@ -5,6 +5,9 @@ description: 'vLLM: high-throughput LLM serving, OpenAI API, quantization.'
 
 # vLLM - High-Performance LLM Serving
 
+> ⚠️ 本文件按上游（NVIDIA）口径写成。海光 DCU（gfx928 / gfx936）**没有 FP8 / FP4 矩阵单元**，
+> 文中所有 FP8 建议在 DCU 上都不成立；DCU 量化走 W8A8 int8，见 `dcu-quant-format-limits`。
+
 ## When to use
 
 Use when deploying production LLM APIs, optimizing inference latency/throughput, or serving models with limited GPU memory. Supports OpenAI-compatible endpoints, quantization (GPTQ/AWQ/FP8), and tensor parallelism.

@@ -1,5 +1,8 @@
 # Quantization Guide
 
+> ⚠️ 本文按上游（NVIDIA）口径写成。海光 DCU（gfx928 / gfx936）**没有 FP8 / FP4 矩阵单元**，
+> 下面 FP8 段落只适用于 NVIDIA H100；DCU 上量化主线是 W8A8 int8（见 `dcu-quant-format-limits`）。
+
 ## Contents
 - Quantization methods comparison
 - AWQ setup and usage

@@ -1,6 +1,6 @@
 ---
 name: dcu-quant-format-limits
-description: 海光 DCU 量化格式能力边界（2026-10-25 实测）：不支持 FP8/FP4，int4 仅 gfx936、gfx928 最高 int8；矩阵核只有 MMAC（MFMA 是死路）。含 gfx928 线程/VGPR/LDS/带宽硬约束、int8 grouped MoE 配方、MXFP4 直读反例、端到端选型教训。选量化格式或写 GEMM/MoE kernel 前先读。
+description: 海光 DCU 量化格式能力边界（2026-10-25 实测）：没有 FP8/FP4 矩阵单元，int4 仅 gfx936（性能验证中）、gfx928 最高 int8；矩阵核只有 MMAC（MFMA 是死路）。含 gfx928 线程/VGPR/LDS/带宽硬约束、int8 grouped MoE 配方、MXFP4 直读反例、2-bit 的 GPTQ/AWQ 前置、端到端选型教训。选量化格式或写 GEMM/MoE kernel 前先读。
 tasks: ""
 ---
 
@@ -23,12 +23,13 @@ tasks: ""
 | FP8（E4M3/E5M2） | ✗ | ✗ | 无 fp8 矩阵单元，只能软解 |
 | FP4 / MXFP4 | ✗ | ✗ | 无 fp4 单元；直读不加速，见 §五 |
 | int8（W8A8） | ✓ `I8I` | ✓ | **gfx928 上唯一有矩阵核的量化格式** |
-| int4（W4A*） | ✗ | ✓ `4xi8I` | gfx928 只有 `v_dot8_i32_i4` 这类点积，没有 int4 矩阵核 |
+| int4（W4A*） | ✗ | ✓ `4xi8I`（**性能验证中**） | gfx928 只有 `v_dot8_i32_i4` 这类点积，没有 int4 矩阵核；gfx936 的原生 int4 矩阵核仍在双架构验证，结论未出前不要引用其性能 |
 | fp16 / bf16 | ✓ | ✓ | 基线 |
 
-- **DCU 整体不支持 FP8 / FP4**（用户确认，2026-10-25）。
-- **int4 只在 gfx936 有矩阵核**；gfx928 天花板是 int8。
-- 选型一句话：**gfx928 → int8；gfx936 → int4**。4bit 让 DeepSeek-V4-Flash-0731 有机会压进 137 GB → 2 卡可行。
+- **DCU 整体没有 FP8 / FP4 矩阵单元**（用户确认，2026-10-25），上游 FP8/FP4 口径不适用。
+- **int4 只在 gfx936 有原生矩阵核**（验证中）；gfx928 天花板是 int8。
+- 选型一句话：**gfx928 → W8A8 int8（主线）**；gfx936 的 int4 作省显存/带宽的第二档。4bit 让 DeepSeek-V4-Flash-0731 有机会压进 137 GB → 2 卡可行。
+- 实测（gfx928，单卡）：int8 MoE op cos **0.99996**（M=1 0.379 ms / M=256 7.82 ms）；4-bit 解包路径 M=256 **4.931 ms**（1.55× vs int8）、cos **0.9975** 可落地；2-bit M=256 **3.792 ms**（2.02×）但精度前置条件见 §七。
 
 ## 二、矩阵核只有 MMAC，没有 MFMA
 
@@ -77,7 +78,8 @@ tasks: ""
 
 ## 七、策略与端到端教训
 
-- 格式：**gfx928 → int8（`I8I`）**；**gfx936 → int4（`4xi8I`）**。
+- 格式：**以 int8 为主、int4 为辅**。gfx928 只有 int8（`I8I`）；gfx936 的 int4（`4xi8I`）验证中，只作显存/带宽受限时的第二档。
+- **2-bit 只在有 GPTQ/AWQ 权重时才谈**：纯 RTN 对称量化在 gfx928 上不可用 —— vs fp32 cos 0.72~0.95、vLLM 端到端 0.769，full/symmetric/asymmetric 三种区间都救不回来，必须 GPTQ/AWQ 式初始化 + 真实权重标定。
 - **优化前先确认瓶颈在哪一层**：MoE 单层从 16.24 ms 降到 0.282 ms（57×），端到端 decode 只从 1.27 → 1.30 tok/s（**+2.1%**），因为 MoE 只占 787 ms/token 里的 16 ms。**局部 50× 不等于端到端有感知**，先做时间归因再动手。
 - 量化收益的判断顺序：① 该格式在本卡有没有矩阵核 → ② 反量化/布局转换是否引入额外 LDS 或带宽 → ③ 端到端该层占比。
 
