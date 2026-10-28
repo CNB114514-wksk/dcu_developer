@@ -14,13 +14,20 @@ tasks: ""
 
 > 跨任务的环境事实，踩错会浪费几小时；子 skill 的具体流程都以这里为前提。
 
-### 网络与代理（按 zone 不同，绝不能写死）
+### 网络与代理（地址与凭据只从文件读，正文不写死）
 
-- 平台**每个 zone 的 HTTP 代理地址不同**：本开发容器是 `10.1.100.10:3120`，无卡跳板机 / 部署机是 `10.15.100.43:3120`（均带凭据，并已注入 `http_proxy`/`https_proxy` 环境变量）。
-- 取值必须 **env 优先 + 逐个探活**：`$SCNET_PROXY → $https_proxy → $http_proxy → 已知 zone 地址 → 直连`，3s TCP 探活选第一个可达的。**写死某个 IP 换 zone 必挂**（典型 `Errno 113 No route to host`；常表现为 git clone 能通、只有 LFS 对象下载挂）。
-- git 也要走代理：`git -c http.proxy=$PROXY clone ...`；LFS 对象另走 CONNECT 隧道（见 `scnet-model-git-upload`）。
+- **解析顺序**（照抄 `scnet-container-env` 的约定，不要自己发明）：
+  1. `<PERSIST_HOME>/.ai_user_info/ai_proxy.override.<notebook|container>` —— 人工覆盖，最高优先
+  2. `<PERSIST_HOME>/.ai_user_info/ai_proxy` —— 平台/持久区文件
+  3. `$https_proxy` / `$http_proxy` —— 登录 shell 注入
+  4. 直连
+- **凭据会轮换**：轮换只改 override 文件。**把 IP 或口令抄进 skill 正文、脚本、注释里，换 zone 或轮换后必挂**（典型 `Errno 113 No route to host`；常表现为 `git clone` 能通、只有 LFS 对象下载挂）。
+- **不要用 `[ -z "$https_proxy" ]` 式守卫**：预置 env 非空会把 override 挡在外面，必须无条件 `source`。
+- 详细机制、`proxy_env.sh` 模板、排障：`scnet-container-env/SKILL.md` §网络与代理。
+- 使用前先 3s TCP 探活，选第一个可达的；git 走代理用 `git -c http.proxy=$PROXY clone ...`。
 - 无外网时的兜底：在**有 egress 的容器**下好，再 `rsync` 到共享持久区（经 `ssh_connect_proxy.py` 实测 ~18 MB/s）。
 - 排查与代码：`qwen38-flashnext-dcu-tuning/references/deploy-api.md` §「模型自动下载」。
+
 
 ### 硬件（海光 DCU，实测峰值——务必区分向量核 vs MMAC）
 
@@ -44,6 +51,16 @@ tasks: ""
 ### 两台机器分工（SCNet 模型部署）
 
 无卡跳板机（SSH，改镜像 / 看日志）→ 平台「保存镜像」→ 部署机（带卡，**只有 HTTP API，无 shell**）。部署机验收只能靠 HTTP 指纹，见 `qwen38-flashnext-dcu-tuning` §10 + `scripts/api_check.py`。
+
+### 首次运行检查单（agent 进场先过一遍，六条都是踩过的坑）
+
+1. **代理从文件读，不写死。** 见上节：按 override → `ai_proxy` → env → 直连 的顺序解析，探活后取第一个可达的。把上一次会话里抄死的 IP 拿去连 → 全超时 → 误判「容器没有外网」，白折腾一轮。
+2. **跨实例访问走 HTTP CONNECT 隧道，不要直连。** 实例之间没有直连路由，用本地端口转发 + 代理转到目标 sshd。**且递归 `find`/`grep` 大目录会把 SSH 直接打挂**（`Connection closed by remote host`）——必须 `-maxdepth` + `timeout 60` + `| head`。
+3. **卡频率被平台锁在最低档。** `pp_dpm_sclk` 停在 0 档 600MHz（该卡可到 1400MHz），显存 DPM 也关闭（mclk 固定）。容器 `/sys` 是只读挂载且无 `CAP_SYS_ADMIN`，**调频接口在容器内不可写，别去试 `hy-smi --setperflevel` / `--setsclk`**。判断实际频率只看 `pp_dpm_sclk` 的 `*` 或 `hwmon/freq1_input`；`hy-smi -c` 报的是档位表末项，会骗人。
+4. **同一时刻只跑一个 GPU 任务；`--disable-dynamic-vram` 意味着模型不会自动卸载。** 换模型必须重启服务，否则上一个任务的权重还压在卡上，后面所有性能数字都是脏的（实测过：带病跑出来的 s/it 和干净跑能差一倍）。
+5. **权重不进镜像，运行时下载。** 镜像里只放代码和 venv。ComfyUI 的自动下载 guard 要求 `/prompt` 请求带 `extra_data.extra_pnginfo.workflow`，否则直接拒单（"请求未携带有效 workflow"）。
+6. **权重目录里残留 `.aria2` / `.part` 会让 guard 误判「没下完」 → 去联网 → 无外网必失败。** 交付前扫一遍 `models/` 下的 sidecar；确认权重完整后把 sidecar 改名移出 models 目录，不要只改后缀（会被资产扫描器当成资源编目）。
+
 
 ## 覆盖范围
 
